@@ -1,0 +1,1119 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Трекер погоды</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+  --bg:#E9EFF3; --surface:#F8FBFC; --ink:#14252D; --muted:#566B75; --line:#C6D4DB;
+  --accent:#1F6C8E; --on-accent:#FFFFFF; --tint:#DCEAF1;
+  --temp:#C8552F; --hum:#2F8F7A; --press:#7A63B8; --uv:#D49A1C; --danger:#B3362B; --vis:#3F7FC0; --wind:#5E7F2F;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1A20; --surface:#16252D; --ink:#E4EDF1; --muted:#8FA5B0; --line:#2A3C46;
+    --accent:#5BB2D6; --on-accent:#0F1A20; --tint:#1D3340;
+    --temp:#EE8A63; --hum:#4CB89E; --press:#A592E0; --uv:#E6B040; --danger:#F0877C; --vis:#7DB1EA; --wind:#9CC25F;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1A20; --surface:#16252D; --ink:#E4EDF1; --muted:#8FA5B0; --line:#2A3C46;
+  --accent:#5BB2D6; --on-accent:#0F1A20; --tint:#1D3340;
+  --temp:#EE8A63; --hum:#4CB89E; --press:#A592E0; --uv:#E6B040; --danger:#F0877C; --vis:#7DB1EA; --wind:#9CC25F;
+}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.5 'Onest',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
+.wrap{max-width:1040px;margin:0 auto;padding:0 16px}
+header.wrap{padding-top:24px;padding-bottom:16px}
+h1{margin:0;font-size:1.9rem;line-height:1.15;font-weight:700;letter-spacing:-0.02em}
+h2{margin:0 0 14px;font-size:1.05rem;font-weight:600}
+#latest{margin:6px 0 0;color:var(--muted);font-size:.95rem}
+main.wrap{padding-bottom:48px;display:grid;gap:20px}
+.layout{display:grid;gap:20px;grid-template-columns:minmax(0,320px) minmax(0,1fr);align-items:start}
+@media (max-width:820px){.layout{grid-template-columns:minmax(0,1fr)}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
+form .row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px}
+form .full{margin-bottom:12px}
+label,.lbl{display:block;font-size:.88rem;font-weight:500;margin-bottom:4px}
+input,select,button{font:inherit;color:inherit}
+input[type=date],input[type=number],input[type=email],input[type=password],select{
+  width:100%;min-height:42px;padding:8px 10px;border:1px solid var(--line);border-radius:6px;
+  background:var(--bg);color:var(--ink)
+}
+.inline{display:flex;gap:6px}
+.inline input{min-width:0}
+.inline select{width:auto;flex:0 0 auto;padding-left:6px;padding-right:6px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.note{margin:0 0 14px;color:var(--muted);font-size:.85rem}
+#f-hint{min-height:1.3em;margin:0 0 12px;color:var(--accent);font-size:.85rem}
+.primary{width:100%;min-height:44px;border:0;border-radius:8px;background:var(--accent);color:var(--on-accent);font-weight:600;cursor:pointer}
+.primary:hover{filter:brightness(1.08)}
+#status{min-height:1.4em;margin:10px 0 0;font-size:.88rem;color:var(--muted)}
+.controls{display:flex;flex-wrap:wrap;gap:10px 16px;justify-content:space-between;margin-bottom:12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chips button{min-height:36px;padding:4px 12px;border:1px solid var(--line);border-radius:6px;background:transparent;cursor:pointer;font-size:.9rem}
+.chips button[aria-pressed="true"]{border-color:var(--accent);background:var(--tint);font-weight:600}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{min-height:36px;padding:4px 12px;border:0;background:transparent;cursor:pointer;font-size:.9rem}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--on-accent);font-weight:600}
+.capline{display:flex;flex-wrap:wrap;gap:4px 16px;align-items:baseline;justify-content:space-between;margin-bottom:4px}
+#chart-cap{font-weight:600;font-size:.95rem}
+#legend,.legend{display:flex;gap:14px;color:var(--muted);font-size:.85rem}
+#legend span,.legend span{display:inline-flex;align-items:center;gap:6px}
+#legend i,.legend i{display:inline-block;width:22px;height:0;border-top:3px solid}
+#legend i.dash,.legend i.dash{border-top-style:dashed}
+#chart svg,#cmp-chart svg{display:block;width:100%;height:auto}
+#cmp-chart{margin-bottom:14px}
+.cmp-cap{font-weight:600;font-size:.95rem}
+.cmp td.max{font-weight:700}
+.tools{display:flex;flex-wrap:wrap;gap:12px 20px;margin-bottom:6px}
+.tools[hidden]{display:none}
+.tools .lbl{margin-bottom:4px}
+.tools .seg button{padding:4px 9px}
+#shown{margin:0 0 12px}
+tr.grp th{background:var(--tint);font-weight:600;padding:6px 10px;text-align:left;white-space:normal}
+.grpbtn{border:0;background:transparent;font:inherit;font-weight:600;color:var(--ink);cursor:pointer;padding:4px 0;min-height:36px;text-align:left}
+.gsum{color:var(--muted);font-size:.85rem;font-weight:400;margin-left:10px}
+td.nofilter{text-align:center;color:var(--muted)}
+main.wrap[hidden]{display:none}
+.hdr{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:8px 16px}
+#userbox{display:flex;align-items:center;gap:10px;color:var(--muted);font-size:.88rem}
+#userbox[hidden]{display:none}
+.authbox{max-width:380px;margin:8px auto 40px}
+#a-status{min-height:1.4em;margin:10px 0 0}
+.xfer{margin-top:12px}
+#xfer-box{margin-top:10px}
+#xfer-text{width:100%;font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--bg);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:8px}
+.xrow{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+#chart .empty,.empty{color:var(--muted);margin:24px 0;text-align:center}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:12px 16px;margin:16px 0 0;padding-top:14px;border-top:1px solid var(--line)}
+.stats div{min-width:0}
+.stats dt{font-size:.8rem;color:var(--muted)}
+.stats dd{margin:0;font-size:1.05rem;font-weight:600;font-variant-numeric:tabular-nums}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums;font-size:.92rem}
+th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+thead th{font-weight:600;color:var(--muted);font-size:.82rem;vertical-align:bottom}
+tbody th{text-align:left;font-weight:500}
+thead th:first-child{text-align:left}
+td.act{text-align:right}
+td.act button{border:0;background:transparent;color:var(--accent);cursor:pointer;padding:6px 8px;min-height:36px;font-size:.88rem}
+td.act button.danger{color:var(--danger);font-weight:600}
+.uv{display:inline-flex;align-items:center;gap:6px}
+.uv i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.foot{display:flex;flex-wrap:wrap;gap:8px 16px;justify-content:space-between;align-items:center;margin-top:14px;color:var(--muted);font-size:.82rem}
+.ghost{border:1px solid var(--line);background:transparent;border-radius:6px;padding:6px 12px;min-height:36px;cursor:pointer;font-size:.88rem}
+.ghost.danger{color:var(--danger);border-color:var(--danger)}
+form .row>div,form .full{min-width:0}
+.seg.wide{display:flex;width:100%}
+.seg.wide button{flex:1;min-height:42px}
+.part{color:var(--accent);font-weight:600;margin-left:6px;font-size:.85em}
+.inline select{max-width:50%}
+#wd-name{color:var(--accent);font-weight:600;margin-left:4px}
+@media (max-width:640px){
+  .wrap{padding-left:12px;padding-right:12px}
+  .panel{padding:14px}
+  h1{font-size:1.6rem}
+  #tablewrap{overflow:visible}
+  #tablewrap table,#tablewrap tbody,#tablewrap tr,#tablewrap th,#tablewrap td{display:block}
+  #tablewrap thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  #tablewrap tbody tr{border:1px solid var(--line);border-radius:8px;padding:6px 12px;margin-bottom:10px}
+  #tablewrap tbody th{padding:6px 0 8px;font-weight:600;border-bottom:1px solid var(--line);text-align:left}
+  #tablewrap td{display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:0;white-space:normal}
+  #tablewrap td[data-label]::before{content:attr(data-label);color:var(--muted)}
+  #tablewrap td.act{justify-content:flex-end;gap:4px;padding-top:6px}
+  .cmp th,.cmp td{padding:8px 4px;white-space:normal;font-size:.88rem}
+  #tablewrap tr.grp{border:0;padding:0;margin:12px 0 6px;background:var(--tint);border-radius:8px}
+  #tablewrap tr.grp th{padding:6px 12px;border:0}
+  .gsum{display:block;margin:0 0 4px}
+}
+</style>
+</head>
+<body>
+<header class="wrap">
+  <div class="hdr">
+    <div>
+      <h1>Трекер погоды</h1>
+      <p id="latest">Записей пока нет.</p>
+    </div>
+    <div id="userbox" hidden>
+      <span id="user-email"></span>
+      <button type="button" class="ghost" id="logout">Выйти</button>
+    </div>
+  </div>
+</header>
+
+<section class="wrap" id="auth" hidden>
+  <form id="auth-form" class="panel authbox" novalidate>
+    <h2>Вход</h2>
+    <p class="note">Войдите, чтобы видеть свои записи на любом устройстве.</p>
+    <div class="full">
+      <label for="a-email">Электронная почта</label>
+      <input id="a-email" type="email" autocomplete="email" required>
+    </div>
+    <div class="full">
+      <label for="a-pass">Пароль</label>
+      <input id="a-pass" type="password" autocomplete="current-password" minlength="6" required>
+    </div>
+    <button class="primary" type="submit" id="a-login">Войти</button>
+    <button type="button" class="ghost" id="a-signup" style="margin-top:10px">Создать аккаунт</button>
+    <p id="a-status" class="note" role="status" aria-live="polite"></p>
+  </form>
+</section>
+
+<section class="wrap" id="cfgerr" hidden>
+  <div class="panel authbox">
+    <h2>Не настроено подключение</h2>
+    <p>Откройте файл config.js и впишите адрес проекта Supabase и публичный ключ. Подробности в README.</p>
+  </div>
+</section>
+
+<main class="wrap" id="app" hidden>
+  <section class="layout">
+    <form id="form" class="panel" novalidate>
+      <h2>Запись за день</h2>
+      <div class="full">
+        <label for="f-date">Дата</label>
+        <input id="f-date" type="date" required>
+      </div>
+      <div class="full">
+        <span class="lbl" id="l-part">Время суток</span>
+        <div class="seg wide" id="parts" role="group" aria-labelledby="l-part">
+          <button type="button" data-part="morning" aria-pressed="false">Утро</button>
+          <button type="button" data-part="day" aria-pressed="false">День</button>
+          <button type="button" data-part="evening" aria-pressed="false">Вечер</button>
+        </div>
+      </div>
+      <p id="f-hint" aria-live="polite"></p>
+      <div class="row">
+        <div>
+          <label for="f-t">Температура, °C</label>
+          <input id="f-t" type="number" step="any" inputmode="decimal" required>
+        </div>
+        <div>
+          <label for="f-f">По ощущениям, °C</label>
+          <input id="f-f" type="number" step="any" inputmode="decimal">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="f-uv">УФ-индекс</label>
+          <input id="f-uv" type="number" step="any" min="0" max="16" inputmode="decimal">
+        </div>
+        <div>
+          <label for="f-p">Осадки, мм</label>
+          <input id="f-p" type="number" step="any" min="0" inputmode="decimal">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="f-h">Влажность, %</label>
+          <input id="f-h" type="number" step="any" min="0" max="100" inputmode="decimal">
+        </div>
+        <div>
+          <label for="f-pr">Давление</label>
+          <div class="inline">
+            <input id="f-pr" type="number" step="any" inputmode="decimal">
+            <select id="f-unit" aria-label="Единица давления">
+              <option value="mmhg">мм рт. ст.</option>
+              <option value="hpa">гПа</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="full">
+        <label for="f-v">Видимость, км</label>
+        <input id="f-v" type="number" step="any" min="0" max="100" inputmode="decimal">
+      </div>
+      <div class="row">
+        <div>
+          <label for="f-w">Ветер, км/ч</label>
+          <input id="f-w" type="number" step="any" min="0" max="300" inputmode="decimal">
+        </div>
+        <div>
+          <label for="f-g">Порывы, км/ч</label>
+          <input id="f-g" type="number" step="any" min="0" max="300" inputmode="decimal">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="f-wd">Направление, °</label>
+          <input id="f-wd" type="number" step="any" min="0" max="360" inputmode="decimal" placeholder="например, 225">
+        </div>
+        <div>
+          <label for="f-wl">Направление, буквы</label>
+          <select id="f-wl"><option value="">—</option><option value="С">С</option><option value="СВ">СВ</option><option value="В">В</option><option value="ЮВ">ЮВ</option><option value="Ю">Ю</option><option value="ЮЗ">ЮЗ</option><option value="З">З</option><option value="СЗ">СЗ</option></select>
+        </div>
+      </div>
+      <p class="note">Обязательны дата и температура, остальное можно пропустить.</p>
+      <button id="f-submit" class="primary" type="submit">Сохранить запись</button>
+      <p id="status" role="status" aria-live="polite"></p>
+    </form>
+
+    <section class="panel" aria-label="Графики">
+      <div class="controls">
+        <div class="chips" id="metrics" role="group" aria-label="Показатель">
+          <button type="button" data-m="temp" aria-pressed="true">Температура</button>
+          <button type="button" data-m="precip" aria-pressed="false">Осадки</button>
+          <button type="button" data-m="hum" aria-pressed="false">Влажность</button>
+          <button type="button" data-m="press" aria-pressed="false">Давление</button>
+          <button type="button" data-m="uv" aria-pressed="false">УФ-индекс</button>
+          <button type="button" data-m="vis" aria-pressed="false">Видимость</button>
+          <button type="button" data-m="wind" aria-pressed="false">Ветер</button>
+        </div>
+        <div class="seg" id="ranges" role="group" aria-label="Период">
+          <button type="button" data-r="7" aria-pressed="false">7 дней</button>
+          <button type="button" data-r="30" aria-pressed="true">30 дней</button>
+          <button type="button" data-r="all" aria-pressed="false">Всё</button>
+        </div>
+      </div>
+      <div class="capline"><div id="chart-cap"></div><div id="legend"></div></div>
+      <div id="chart"></div>
+      <dl class="stats">
+        <div><dt>Средняя температура</dt><dd id="st-t">—</dd></div>
+        <div><dt>Осадки за период</dt><dd id="st-p">—</dd></div>
+        <div><dt>Средняя влажность</dt><dd id="st-h">—</dd></div>
+        <div><dt>Среднее давление</dt><dd id="st-pr">—</dd></div>
+        <div><dt>Максимум УФ</dt><dd id="st-uv">—</dd></div>
+        <div><dt>Средняя видимость</dt><dd id="st-v">—</dd></div>
+        <div><dt>Средний ветер</dt><dd id="st-w">—</dd></div>
+        <div><dt>Максимум порывов</dt><dd id="st-g">—</dd></div>
+        <div><dt>Чаще всего ветер</dt><dd id="st-wd">—</dd></div>
+      </dl>
+    </section>
+  </section>
+
+  <section class="panel" id="compare">
+    <h2>Сравнение: утро, день, вечер</h2>
+    <p class="note" id="cmp-note"></p>
+    <div id="cmp-body">
+      <div id="cmp-chart"></div>
+      <div class="tablewrap">
+        <table class="cmp">
+          <thead><tr><th scope="col">Показатель</th><th scope="col">Утро</th><th scope="col">День</th><th scope="col">Вечер</th></tr></thead>
+          <tbody id="cmp-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Все записи</h2>
+    <div class="tools" id="tools" hidden>
+      <div>
+        <span class="lbl">Группировка</span>
+        <div class="seg" id="grp-seg" role="group" aria-label="Группировка">
+          <button type="button" data-g="none" aria-pressed="true">Без</button>
+          <button type="button" data-g="day" aria-pressed="false">Дни</button>
+          <button type="button" data-g="week" aria-pressed="false">Недели</button>
+          <button type="button" data-g="month" aria-pressed="false">Месяцы</button>
+          <button type="button" data-g="year" aria-pressed="false">Годы</button>
+        </div>
+      </div>
+      <div>
+        <span class="lbl">Время суток</span>
+        <div class="seg" id="tf-seg" role="group" aria-label="Время суток">
+          <button type="button" data-tf="all" aria-pressed="true">Все</button>
+          <button type="button" data-tf="morning" aria-pressed="false">Утро</button>
+          <button type="button" data-tf="day" aria-pressed="false">День</button>
+          <button type="button" data-tf="evening" aria-pressed="false">Вечер</button>
+        </div>
+      </div>
+      <div>
+        <span class="lbl">Порядок</span>
+        <div class="seg" id="sort-seg" role="group" aria-label="Порядок">
+          <button type="button" data-s="desc" aria-pressed="true">Новые сверху</button>
+          <button type="button" data-s="asc" aria-pressed="false">Старые сверху</button>
+        </div>
+      </div>
+    </div>
+    <p class="note" id="shown"></p>
+    <div id="empty" class="empty">
+      <p>Добавьте первую запись слева — график и итоги появятся сразу.</p>
+    </div>
+    <div class="tablewrap" id="tablewrap" hidden>
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Дата, время</th>
+            <th scope="col">Темп., °C</th>
+            <th scope="col">Ощущ., °C</th>
+            <th scope="col">УФ</th>
+            <th scope="col">Осадки, мм</th>
+            <th scope="col">Влажн., %</th>
+            <th scope="col" id="th-pr">Давл.</th>
+            <th scope="col">Видим., км</th>
+            <th scope="col">Ветер, км/ч</th>
+            <th scope="col">Порывы, км/ч</th>
+            <th scope="col">Направл.</th>
+            <th scope="col"><span class="sr">Действия</span></th>
+          </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="foot">
+      <span>Записи хранятся в вашей базе Supabase и доступны на всех устройствах после входа.</span>
+      <button type="button" class="ghost" id="clear" hidden>Очистить все записи</button>
+    </div>
+    <!-- xfer:start -->
+    <div class="xfer">
+      <button type="button" class="ghost" id="xfer-btn">Экспорт и импорт данных</button>
+      <div id="xfer-box" hidden>
+        <p class="note">Экспорт: нажмите «Показать мои данные» и скопируйте текст. Импорт: вставьте текст в поле и нажмите «Загрузить из текста». Записи с той же датой и временем суток будут обновлены.</p>
+        <textarea id="xfer-text" rows="6"></textarea>
+        <div class="xrow">
+          <button type="button" class="ghost" id="xfer-show">Показать мои данные</button>
+          <button type="button" class="ghost" id="xfer-load">Загрузить из текста</button>
+        </div>
+      </div>
+    </div>
+    <!-- xfer:end -->
+  </section>
+</main>
+
+<script>
+(function(){
+  var UNIT_KEY = 'weather-tracker:unit';
+  var HPA = 1.33322;
+  var DIRS = ['С', 'СВ', 'В', 'ЮВ', 'Ю', 'ЮЗ', 'З', 'СЗ'];
+  var PARTS = ['morning', 'day', 'evening'];
+  var PART_NAME = { morning: 'Утро', day: 'День', evening: 'Вечер' };
+  var PART_H = { morning: 8, day: 14, evening: 20 };
+  var formPart = (function(){ var h = new Date().getHours(); return h < 12 ? 'morning' : (h < 18 ? 'day' : 'evening'); })();
+  function partIdx(p){ return PARTS.indexOf(p); }
+  function tsE(e){ return ts(e.date) + PART_H[e.part] * 3600000; }
+  function compass(deg){ return DIRS[Math.round((((deg % 360) + 360) % 360) / 45) % 8]; }
+  function wdLoad(v){
+    var i = DIRS.indexOf(v);
+    if (i >= 0) return i * 45;
+    return (typeof v === 'number' && isFinite(v) && v >= 0 && v <= 360) ? v : null;
+  }
+  var state = { entries: [], unit: 'mmhg', range: '30', metric: 'temp', group: 'none', sort: 'desc', tf: 'all', collapsed: {} };
+  var prefilled = false;
+
+  function $(s){ return document.querySelector(s); }
+  function numOrNull(v){ return (typeof v === 'number' && isFinite(v)) ? v : null; }
+  function inputNum(v){ if (v === '' || v == null) return null; var n = Number(v); return isFinite(n) ? n : null; }
+  function fmt(n, d){
+    if (n == null) return '—';
+    if (d == null) d = 1;
+    var k = Math.pow(10, d);
+    return String(Math.round(n * k) / k).replace('.', ',');
+  }
+  function dp(hpa){ return hpa == null ? null : (state.unit === 'mmhg' ? hpa / HPA : hpa); }
+  function fmtP(hpa){ return hpa == null ? '—' : String(Math.round(dp(hpa))); }
+  function unitP(){ return state.unit === 'mmhg' ? 'мм рт. ст.' : 'гПа'; }
+  function pad(n){ return String(n).padStart(2, '0'); }
+  function today(){ var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+  function ts(s){ var p = s.split('-').map(Number); return Date.UTC(p[0], p[1] - 1, p[2]); }
+  function dmy(s){ var p = s.split('-'); return p[2] + '.' + p[1] + '.' + p[0]; }
+  function dm(s){ var p = s.split('-'); return p[2] + '.' + p[1]; }
+  function addDays(s, n){ var d = new Date(ts(s) + n * 86400000); return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+  function avg(a){ return a.length ? a.reduce(function(x, y){ return x + y; }, 0) / a.length : null; }
+
+  /* ---------- storage ---------- */
+  var CFG = window.APP_CONFIG || {};
+  var TABLE = 'weather_entries';
+  var COLS = 'id,date,part,t,f,uv,p,h,pr,v,w,g,wd,wl';
+  var sb = null, session = null, started = false;
+
+  function loadPrefs(){
+    try{
+      var u = localStorage.getItem(UNIT_KEY);
+      if (u === 'mmhg' || u === 'hpa') state.unit = u;
+    }catch(err){}
+  }
+  function save(){
+    try{ localStorage.setItem(UNIT_KEY, state.unit); }catch(err){}
+    return true;
+  }
+  function nn(v){ return v == null ? null : Number(v); }
+  function errText(e){ return (e && (e.message || e.error_description)) || 'неизвестная ошибка'; }
+  function fromRow(r){
+    return { id: r.id, date: r.date, part: PARTS.indexOf(r.part) >= 0 ? r.part : 'day', t: Number(r.t),
+      f: nn(r.f), uv: nn(r.uv), p: nn(r.p), h: nn(r.h), pr: nn(r.pr), v: nn(r.v), w: nn(r.w), g: nn(r.g),
+      wd: nn(r.wd), wl: DIRS.indexOf(r.wl) >= 0 ? r.wl : null };
+  }
+  function toRow(e){
+    return { user_id: session.user.id, date: e.date, part: e.part, t: e.t, f: e.f, uv: e.uv, p: e.p, h: e.h,
+      pr: e.pr, v: e.v, w: e.w, g: e.g, wd: e.wd, wl: e.wl };
+  }
+  async function fetchAll(){
+    var all = [], from = 0, size = 1000;
+    while (true){
+      var res = await sb.from(TABLE).select(COLS).order('date', { ascending: true }).range(from, from + size - 1);
+      if (res.error) throw res.error;
+      all = all.concat(res.data);
+      if (res.data.length < size) break;
+      from += size;
+    }
+    state.entries = all.map(fromRow);
+  }
+
+  function sorted(){ return state.entries.slice().sort(function(a, b){ return a.date < b.date ? -1 : (a.date > b.date ? 1 : (partIdx(a.part) - partIdx(b.part))); }); }
+  function visible(){
+    var all = sorted();
+    if (!all.length || state.range === 'all') return all;
+    var n = Number(state.range);
+    var from = ts(all[all.length - 1].date) - (n - 1) * 86400000;
+    return all.filter(function(e){ return ts(e.date) >= from; });
+  }
+
+  /* ---------- UV ---------- */
+  function uvColor(v){ return v < 3 ? '#5FA84A' : v < 6 ? '#E0B000' : v < 8 ? '#E67E22' : v < 11 ? '#D64545' : '#8E5BC4'; }
+  function uvLevel(v){ return v < 3 ? 'низкий' : v < 6 ? 'умеренный' : v < 8 ? 'высокий' : v < 11 ? 'очень высокий' : 'экстремальный'; }
+
+  /* ---------- status ---------- */
+  var statusTimer = null;
+  function say(msg){
+    $('#status').textContent = msg;
+    clearTimeout(statusTimer);
+    statusTimer = setTimeout(function(){ $('#status').textContent = ''; }, 4500);
+  }
+
+  /* ---------- form ---------- */
+  function setPressureAttrs(){
+    var el = $('#f-pr');
+    if (state.unit === 'mmhg'){ el.min = 600; el.max = 820; } else { el.min = 800; el.max = 1100; }
+  }
+  function fill(e){
+    $('#f-t').value = e.t;
+    $('#f-f').value = e.f == null ? '' : e.f;
+    $('#f-uv').value = e.uv == null ? '' : e.uv;
+    $('#f-p').value = e.p == null ? '' : e.p;
+    $('#f-h').value = e.h == null ? '' : e.h;
+    $('#f-pr').value = e.pr == null ? '' : Math.round(dp(e.pr));
+    $('#f-v').value = e.v == null ? '' : e.v;
+    $('#f-w').value = e.w == null ? '' : e.w;
+    $('#f-g').value = e.g == null ? '' : e.g;
+    $('#f-wd').value = e.wd == null ? '' : e.wd;
+    $('#f-wl').value = e.wl || '';
+  }
+  function clearFields(){
+    ['#f-t', '#f-f', '#f-uv', '#f-p', '#f-h', '#f-pr', '#f-v', '#f-w', '#f-g', '#f-wd', '#f-wl'].forEach(function(s){ $(s).value = ''; });
+  }
+  function updateWdName(){
+    var d = inputNum($('#f-wd').value);
+    if (d != null && d >= 0 && d <= 360) $('#f-wl').value = compass(d);
+  }
+  function syncDate(){
+    var d = $('#f-date').value;
+    var e = state.entries.filter(function(x){ return x.date === d && x.part === formPart; })[0];
+    if (e){
+      fill(e); prefilled = true;
+      $('#f-hint').textContent = 'За эту дату и время суток запись уже есть — сохранение обновит её.';
+    } else {
+      if (prefilled){ clearFields(); prefilled = false; }
+      $('#f-hint').textContent = '';
+    }
+    $('#f-submit').textContent = e ? 'Обновить запись' : 'Сохранить запись';
+    updateWdName();
+  }
+
+  $('#form').addEventListener('submit', async function(ev){
+    ev.preventDefault();
+    var form = $('#form');
+    var date = $('#f-date').value;
+    if (!date){ say('Укажите дату.'); $('#f-date').focus(); return; }
+    var t = inputNum($('#f-t').value);
+    if (t == null){ say('Введите температуру.'); $('#f-t').focus(); return; }
+    var bad = null;
+    ['#f-uv', '#f-p', '#f-h', '#f-pr', '#f-v', '#f-w', '#f-g', '#f-wd', '#f-wl'].forEach(function(s){
+      var el = $(s);
+      if (!bad && el.value !== '' && !el.checkValidity()) bad = el;
+    });
+    if (bad){ say('Проверьте значение: ' + (bad.validationMessage || 'вне допустимого диапазона')); bad.focus(); return; }
+    var w0 = inputNum($('#f-w').value), g0 = inputNum($('#f-g').value);
+    if (w0 != null && g0 != null && g0 < w0){ say('Порывы не могут быть слабее ветра.'); $('#f-g').focus(); return; }
+    var wd0 = inputNum($('#f-wd').value), wl0 = $('#f-wl').value;
+    if (wd0 != null && wl0 && compass(wd0) !== wl0){ say(wd0 + '° — это ' + compass(wd0) + ', а выбрано ' + wl0 + '. Поправьте одно из полей.'); $('#f-wl').focus(); return; }
+    var pr = inputNum($('#f-pr').value);
+    if (pr != null){ if (state.unit === 'mmhg') pr = pr * HPA; pr = Math.round(pr * 10) / 10; }
+    var entry = { date: date, part: formPart, t: t, f: inputNum($('#f-f').value), uv: inputNum($('#f-uv').value), p: inputNum($('#f-p').value), h: inputNum($('#f-h').value), pr: pr, v: inputNum($('#f-v').value), w: inputNum($('#f-w').value), g: inputNum($('#f-g').value), wd: inputNum($('#f-wd').value), wl: $('#f-wl').value || (inputNum($('#f-wd').value) != null ? compass(inputNum($('#f-wd').value)) : null) };
+    var i = -1;
+    state.entries.forEach(function(x, idx){ if (x.date === date && x.part === formPart) i = idx; });
+    var btn = $('#f-submit');
+    btn.disabled = true;
+    try{
+      var res = await sb.from(TABLE).upsert(toRow(entry), { onConflict: 'user_id,date,part' }).select(COLS).single();
+      if (res.error) throw res.error;
+      entry = fromRow(res.data);
+    }catch(err){
+      btn.disabled = false;
+      say('Не удалось сохранить: ' + errText(err));
+      return;
+    }
+    btn.disabled = false;
+    if (i >= 0) state.entries[i] = entry; else state.entries.push(entry);
+    prefilled = true;
+    renderAll();
+    syncDate();
+    say('Запись за ' + dmy(date) + ', ' + PART_NAME[formPart].toLowerCase() + (i >= 0 ? ' обновлена.' : ' сохранена.'));
+  });
+  $('#f-date').addEventListener('change', syncDate);
+  function renderParts(){
+    Array.prototype.forEach.call(document.querySelectorAll('#parts button'), function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-part') === formPart));
+    });
+  }
+  $('#parts').addEventListener('click', function(ev){
+    var b = ev.target.closest('button[data-part]');
+    if (!b) return;
+    formPart = b.getAttribute('data-part');
+    renderParts();
+    syncDate();
+  });
+  $('#f-wd').addEventListener('input', updateWdName);
+
+  $('#f-unit').addEventListener('change', function(){
+    var next = $('#f-unit').value;
+    var el = $('#f-pr');
+    var v = inputNum(el.value);
+    if (v != null){
+      var hpa = state.unit === 'mmhg' ? v * HPA : v;
+      state.unit = next;
+      el.value = Math.round(next === 'mmhg' ? hpa / HPA : hpa);
+    } else {
+      state.unit = next;
+    }
+    setPressureAttrs();
+    save();
+    renderAll();
+  });
+
+  /* ---------- controls ---------- */
+  $('#metrics').addEventListener('click', function(ev){
+    var b = ev.target.closest('button[data-m]');
+    if (!b) return;
+    state.metric = b.getAttribute('data-m');
+    renderControls(); renderChart(); renderCompare();
+  });
+  $('#ranges').addEventListener('click', function(ev){
+    var b = ev.target.closest('button[data-r]');
+    if (!b) return;
+    state.range = b.getAttribute('data-r');
+    renderControls(); renderChart(); renderStats(); renderCompare();
+  });
+  function renderControls(){
+    Array.prototype.forEach.call(document.querySelectorAll('#metrics button'), function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-m') === state.metric));
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#ranges button'), function(b){
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-r') === state.range));
+    });
+    [['#grp-seg', 'data-g', 'group'], ['#tf-seg', 'data-tf', 'tf'], ['#sort-seg', 'data-s', 'sort']].forEach(function(c){
+      Array.prototype.forEach.call(document.querySelectorAll(c[0] + ' button'), function(b){
+        b.setAttribute('aria-pressed', String(b.getAttribute(c[1]) === state[c[2]]));
+      });
+    });
+  }
+
+  /* ---------- chart ---------- */
+  var SERIES = {
+    temp:   [{ k: 't', c: 'var(--temp)', name: 'Температура' }, { k: 'f', c: 'var(--temp)', dash: true, name: 'По ощущениям' }],
+    precip: [{ k: 'p', c: 'var(--accent)', bar: true }],
+    hum:    [{ k: 'h', c: 'var(--hum)' }],
+    press:  [{ k: 'pr', c: 'var(--press)' }],
+    uv:     [{ k: 'uv', c: 'var(--uv)', bar: true }],
+    vis:    [{ k: 'v', c: 'var(--vis)' }],
+    wind:   [{ k: 'w', c: 'var(--wind)', name: 'Ветер' }, { k: 'g', c: 'var(--wind)', dash: true, name: 'Порывы' }]
+  };
+  var LABELS = { temp: 'Температура', precip: 'Осадки', hum: 'Влажность', press: 'Давление', uv: 'УФ-индекс', vis: 'Видимость', wind: 'Ветер' };
+  function metricUnit(){
+    return { temp: '°C', precip: 'мм', hum: '%', press: unitP(), uv: '', vis: 'км', wind: 'км/ч' }[state.metric];
+  }
+  function getv(e, k){ return k === 'pr' ? dp(e.pr) : e[k]; }
+  function niceStep(x){
+    var p = Math.pow(10, Math.floor(Math.log10(x)));
+    var f = x / p;
+    return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10) * p;
+  }
+  function scale(min, max, n){
+    if (max - min < 1e-9){ min -= 1; max += 1; }
+    var step = niceStep((max - min) / n);
+    return { lo: Math.floor(min / step + 1e-9) * step, hi: Math.ceil(max / step - 1e-9) * step, step: step };
+  }
+
+  function renderChart(){
+    var box = $('#chart');
+    var data = visible();
+    var specs = SERIES[state.metric];
+    var unit = metricUnit();
+    $('#chart-cap').textContent = LABELS[state.metric] + (unit ? ', ' + unit : '');
+    $('#legend').innerHTML = specs.length > 1 ? specs.map(function(s){
+      return '<span><i' + (s.dash ? ' class="dash"' : '') + ' style="border-color:' + s.c + '"></i>' + s.name + '</span>';
+    }).join('') : '';
+    var vals = [];
+    specs.forEach(function(s){ data.forEach(function(e){ var v = getv(e, s.k); if (v != null) vals.push(v); }); });
+    if (!vals.length){
+      box.innerHTML = '<p class="empty">' + (state.entries.length ? 'Для этого показателя пока нет данных.' : 'Здесь появится график после первой записи.') + '</p>';
+      return;
+    }
+    var W = 640, H = 260, L = 46, R = 12, T = 14, B = 30, PX = 14;
+    var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+    var isBar = !!specs[0].bar;
+    if (isBar){ mn = 0; mx = Math.max(mx, state.metric === 'precip' ? 5 : 3); }
+    var sc = scale(mn, mx, 4);
+    function y(v){ return T + (H - T - B) * (1 - (v - sc.lo) / (sc.hi - sc.lo)); }
+    var t0 = tsE(data[0]), t1 = tsE(data[data.length - 1]);
+    var iw = W - L - R - PX * 2;
+    function x(e){ return (t1 === t0) ? L + PX + iw / 2 : L + PX + iw * (tsE(e) - t0) / (t1 - t0); }
+    var span = Math.round((t1 - t0) / (6 * 3600000)) + 1;
+    var barW = Math.max(3, Math.min(26, iw / Math.max(span, 1) * 0.7));
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="График: ' + LABELS[state.metric] + '">';
+
+    var nt = Math.round((sc.hi - sc.lo) / sc.step);
+    for (var i = 0; i <= nt; i++){
+      var v = sc.lo + i * sc.step;
+      var yy = y(v);
+      out += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--line)" stroke-width="1"/>';
+      out += '<text x="' + (L - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="12" fill="var(--muted)">' + fmt(v, sc.step < 1 ? 1 : 0) + '</text>';
+    }
+
+    var n = data.length, k = Math.min(n, 4), idx = [], multi = data.some(function(e, q){ return q > 0 && e.date === data[q - 1].date; });
+    for (var j = 0; j < k; j++){
+      var ix = k === 1 ? 0 : Math.round(j * (n - 1) / (k - 1));
+      if (idx.indexOf(ix) < 0) idx.push(ix);
+    }
+    idx.forEach(function(ix, pos){
+      var anchor = (n === 1) ? 'middle' : (pos === 0 ? 'start' : (pos === idx.length - 1 ? 'end' : 'middle'));
+      out += '<text x="' + x(data[ix]) + '" y="' + (H - 8) + '" text-anchor="' + anchor + '" font-size="12" fill="var(--muted)">' + dmy(data[ix].date) + (multi ? ' ' + PART_NAME[data[ix].part].toLowerCase() : '') + '</text>';
+    });
+
+    specs.forEach(function(s){
+      if (s.bar){
+        data.forEach(function(e){
+          var v = getv(e, s.k);
+          if (v == null || v <= 0) return;
+          var top = y(v), base = y(0);
+          var fill = state.metric === 'uv' ? uvColor(v) : s.c;
+          out += '<rect x="' + (x(e) - barW / 2) + '" y="' + top + '" width="' + barW + '" height="' + Math.max(1.5, base - top) + '" rx="2" fill="' + fill + '"><title>' + dmy(e.date) + ', ' + PART_NAME[e.part].toLowerCase() + ': ' + fmt(v) + (unit ? ' ' + unit : '') + '</title></rect>';
+        });
+      } else {
+        var d = '', pen = false;
+        data.forEach(function(e){
+          var v = getv(e, s.k);
+          if (v == null){ pen = false; return; }
+          d += (pen ? 'L' : 'M') + x(e).toFixed(1) + ' ' + y(v).toFixed(1) + ' ';
+          pen = true;
+        });
+        out += '<path d="' + d + '" fill="none" stroke="' + s.c + '" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"' + (s.dash ? ' stroke-dasharray="6 5"' : '') + '/>';
+        if (n <= 45){
+          data.forEach(function(e){
+            var v = getv(e, s.k);
+            if (v == null) return;
+            out += '<circle cx="' + x(e).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="3.5" fill="' + s.c + '"><title>' + dmy(e.date) + ', ' + PART_NAME[e.part].toLowerCase() + ': ' + fmt(v) + (unit ? ' ' + unit : '') + (s.name ? ' (' + s.name.toLowerCase() + ')' : '') + '</title></circle>';
+          });
+        }
+      }
+    });
+    out += '</svg>';
+    box.innerHTML = out;
+  }
+
+  /* ---------- stats, table, header ---------- */
+  function renderStats(){
+    var v = visible();
+    function col(k){ return v.map(function(e){ return e[k]; }).filter(function(a){ return a != null; }); }
+    var t = avg(col('t')), h = avg(col('h')), pr = avg(col('pr'));
+    var p = col('p'), uv = col('uv');
+    $('#st-t').textContent = t == null ? '—' : fmt(t) + ' °C';
+    $('#st-p').textContent = p.length ? fmt(p.reduce(function(a, b){ return a + b; }, 0)) + ' мм' : '—';
+    $('#st-h').textContent = h == null ? '—' : fmt(h, 0) + ' %';
+    $('#st-pr').textContent = pr == null ? '—' : fmtP(pr) + ' ' + unitP();
+    $('#st-uv').textContent = uv.length ? fmt(Math.max.apply(null, uv)) : '—';
+    var vi = avg(col('v'));
+    $('#st-v').textContent = vi == null ? '—' : fmt(vi) + ' км';
+    var wi = avg(col('w')), gu = col('g');
+    $('#st-w').textContent = wi == null ? '—' : fmt(wi) + ' км/ч';
+    $('#st-g').textContent = gu.length ? fmt(Math.max.apply(null, gu)) + ' км/ч' : '—';
+    var cnt = {}, best = null;
+    v.forEach(function(e){ if (e.wl){ var c = e.wl; cnt[c] = (cnt[c] || 0) + 1; if (best == null || cnt[c] > cnt[best]) best = c; } });
+    $('#st-wd').textContent = best || '—';
+  }
+
+  var pend = null, pendTimer = null;
+  function uvCell(v){
+    if (v == null) return '—';
+    return '<span class="uv" title="' + uvLevel(v) + '"><i style="background:' + uvColor(v) + '"></i>' + fmt(v) + '</span>';
+  }
+  function cell(label, html){ return '<td data-label="' + label + '">' + html + '</td>'; }
+  var WD = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
+  var MONTHS = ['Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь', 'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь'];
+  function plural(n, f){
+    var m10 = n % 10, m100 = n % 100;
+    return n + ' ' + (m10 === 1 && m100 !== 11 ? f[0] : (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? f[1] : f[2]));
+  }
+  function groupOf(e){
+    if (state.group === 'day'){
+      return { key: e.date, title: dmy(e.date) + ', ' + WD[new Date(ts(e.date)).getUTCDay()] };
+    }
+    if (state.group === 'week'){
+      var mon = addDays(e.date, -((new Date(ts(e.date)).getUTCDay() + 6) % 7));
+      var sun = addDays(mon, 6);
+      return { key: mon, title: 'Неделя ' + (mon.slice(0, 4) !== sun.slice(0, 4) ? dmy(mon) : dm(mon)) + ' – ' + dmy(sun) };
+    }
+    if (state.group === 'year') return { key: e.date.slice(0, 4), title: e.date.slice(0, 4) + ' год' };
+    var ym = e.date.slice(0, 7), pp = ym.split('-');
+    return { key: ym, title: MONTHS[Number(pp[1]) - 1] + ' ' + pp[0] };
+  }
+  function groupSummary(items){
+    var temps = items.map(function(e){ return e.t; });
+    var rain = items.map(function(e){ return e.p; }).filter(function(x){ return x != null; });
+    var txt = plural(items.length, ['запись', 'записи', 'записей']) + ' · ' + fmt(avg(temps)) + ' °C в среднем';
+    if (rain.length) txt += ' · осадки ' + fmt(rain.reduce(function(a, b){ return a + b; }, 0)) + ' мм';
+    return txt;
+  }
+  function rowHtml(e){
+    var del = pend === e.date + '|' + e.part
+      ? '<button type="button" class="danger" data-act="del">Точно удалить?</button>'
+      : '<button type="button" data-act="del">Удалить</button>';
+    return '<tr data-date="' + e.date + '" data-part="' + e.part + '"><th scope="row">' + dmy(e.date) + ' <span class="part">' + PART_NAME[e.part] + '</span></th>' +
+      cell('Температура, °C', fmt(e.t)) + cell('По ощущениям, °C', fmt(e.f)) + cell('УФ-индекс', uvCell(e.uv)) +
+      cell('Осадки, мм', fmt(e.p)) + cell('Влажность, %', e.h == null ? '—' : fmt(e.h, 0)) +
+      cell('Давление, ' + unitP(), fmtP(e.pr)) + cell('Видимость, км', fmt(e.v)) +
+      cell('Ветер, км/ч', fmt(e.w)) + cell('Порывы, км/ч', fmt(e.g)) + cell('Направление', (e.wd == null && !e.wl) ? '—' : (e.wd != null ? Math.round(e.wd) + '° ' : '') + (e.wl || '')) +
+      '<td class="act"><button type="button" data-act="edit">Изменить</button>' + del + '</td></tr>';
+  }
+  function renderTable(){
+    var all = sorted();
+    var list = all.filter(function(e){ return state.tf === 'all' || e.part === state.tf; });
+    if (state.sort === 'desc') list.reverse();
+    $('#empty').hidden = all.length > 0;
+    $('#tablewrap').hidden = all.length === 0;
+    $('#tools').hidden = all.length === 0;
+    $('#clear').hidden = all.length === 0;
+    $('#th-pr').textContent = 'Давл., ' + unitP();
+    $('#f-unit').value = state.unit;
+    $('#shown').hidden = all.length === 0;
+    $('#shown').textContent = 'Показано ' + list.length + ' из ' + all.length + '.';
+    var html = '';
+    if (!list.length){
+      html = '<tr><td colspan="12" class="nofilter">Нет записей за выбранное время суток.</td></tr>';
+    } else if (state.group === 'none'){
+      html = list.map(rowHtml).join('');
+    } else {
+      var groups = [], cur = null;
+      list.forEach(function(e){
+        var g = groupOf(e);
+        if (!cur || cur.key !== g.key){ cur = { key: g.key, title: g.title, items: [] }; groups.push(cur); }
+        cur.items.push(e);
+      });
+      html = groups.map(function(g){
+        var id = state.group + ':' + g.key;
+        var open = !state.collapsed[id];
+        return '<tr class="grp"><th scope="colgroup" colspan="12"><button type="button" class="grpbtn" data-grp="' + id + '" aria-expanded="' + open + '"><span aria-hidden="true">' + (open ? '▾' : '▸') + '</span> ' + g.title + '</button><span class="gsum">' + groupSummary(g.items) + '</span></th></tr>' +
+          (open ? g.items.map(rowHtml).join('') : '');
+      }).join('');
+    }
+    $('#tbody').innerHTML = html;
+  }
+  function renderLatest(){
+    var all = sorted();
+    if (!all.length){ $('#latest').textContent = 'Записей пока нет.'; return; }
+    var e = all[all.length - 1];
+    var s = 'Последняя запись, ' + dmy(e.date) + ', ' + PART_NAME[e.part].toLowerCase() + ': ' + fmt(e.t) + ' °C';
+    if (e.f != null) s += ', по ощущениям ' + fmt(e.f) + ' °C';
+    $('#latest').textContent = s;
+  }
+  function renderCompareChart(by){
+    var specs = SERIES[state.metric], unit = metricUnit();
+    var avgs = specs.map(function(s){
+      return PARTS.map(function(p){
+        var a = by[p].map(function(e){ return getv(e, s.k); }).filter(function(x){ return x != null; });
+        return avg(a);
+      });
+    });
+    var vals = [];
+    avgs.forEach(function(r){ r.forEach(function(v){ if (v != null) vals.push(v); }); });
+    var box = $('#cmp-chart');
+    if (!vals.length){ box.innerHTML = '<p class="empty">Для этого показателя нет данных.</p>'; return; }
+    var W = 640, H = 240, L = 46, R = 28, T = 26, B = 30;
+    var mn = Math.min.apply(null, vals), mx = Math.max.apply(null, vals);
+    if (specs[0].bar){ mn = 0; mx = Math.max(mx, 1); }
+    var sc = scale(mn, mx, 4);
+    function y(v){ return T + (H - T - B) * (1 - (v - sc.lo) / (sc.hi - sc.lo)); }
+    function x(i){ return L + (W - L - R) * (i + 0.5) / 3; }
+    var dec = (state.metric === 'press' || state.metric === 'hum') ? 0 : 1;
+    var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Сравнение: ' + LABELS[state.metric] + ' по времени суток">';
+    var nt = Math.round((sc.hi - sc.lo) / sc.step);
+    for (var i = 0; i <= nt; i++){
+      var gv = sc.lo + i * sc.step, yy = y(gv);
+      out += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--line)" stroke-width="1"/>';
+      out += '<text x="' + (L - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="12" fill="var(--muted)">' + fmt(gv, sc.step < 1 ? 1 : 0) + '</text>';
+    }
+    PARTS.forEach(function(p, i){
+      out += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="13" fill="var(--ink)">' + PART_NAME[p] + '</text>';
+    });
+    specs.forEach(function(s, si){
+      var d = '', pen = false;
+      avgs[si].forEach(function(v, i){
+        if (v == null){ pen = false; return; }
+        d += (pen ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1) + ' ';
+        pen = true;
+      });
+      out += '<path d="' + d + '" fill="none" stroke="' + s.c + '" stroke-width="2.25" stroke-linejoin="round" stroke-linecap="round"' + (s.dash ? ' stroke-dasharray="6 5"' : '') + '/>';
+      avgs[si].forEach(function(v, i){
+        if (v == null) return;
+        var other = specs.length > 1 ? avgs[1 - si][i] : null;
+        var lower = other != null && (v < other || (v === other && si === 1));
+        out += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(v).toFixed(1) + '" r="5" fill="' + s.c + '"/>';
+        out += '<text x="' + x(i).toFixed(1) + '" y="' + (y(v) + (lower ? 20 : -10)).toFixed(1) + '" text-anchor="middle" font-size="12.5" font-weight="600" fill="var(--ink)">' + fmt(v, dec) + '</text>';
+      });
+    });
+    out += '</svg>';
+    var legend = specs.length > 1 ? '<div class="legend">' + specs.map(function(s){
+      return '<span><i' + (s.dash ? ' class="dash"' : '') + ' style="border-color:' + s.c + '"></i>' + s.name + '</span>';
+    }).join('') + '</div>' : '';
+    box.innerHTML = '<div class="capline"><div class="cmp-cap">Среднее по времени суток: ' + LABELS[state.metric] + (unit ? ', ' + unit : '') + '</div>' + legend + '</div>' + out;
+  }
+  function renderCompare(){
+    var data = visible();
+    var by = { morning: [], day: [], evening: [] };
+    data.forEach(function(e){ by[e.part].push(e); });
+    var filled = PARTS.filter(function(p){ return by[p].length > 0; }).length;
+    var rangeTxt = state.range === 'all' ? 'за всё время' : 'за ' + state.range + ' дней';
+    $('#cmp-note').textContent = filled < 2
+      ? 'Чтобы сравнить, нужны записи минимум за два времени суток: выберите время в форме и добавьте записи.'
+      : 'Средние значения ' + rangeTxt + ' (записей: утро ' + by.morning.length + ', день ' + by.day.length + ', вечер ' + by.evening.length + '). Показатель на графике и период выбираются в блоке выше. Жирным выделено наибольшее значение.';
+    $('#cmp-body').hidden = filled < 2;
+    if (filled < 2) return;
+    renderCompareChart(by);
+    var rows = [
+      ['Температура, °C', 't', 1], ['По ощущениям, °C', 'f', 1], ['УФ-индекс', 'uv', 1],
+      ['Осадки, мм (в среднем за запись)', 'p', 1], ['Влажность, %', 'h', 0], ['Давление, ' + unitP(), 'pr', 0],
+      ['Видимость, км', 'v', 1], ['Ветер, км/ч', 'w', 1], ['Порывы, км/ч', 'g', 1]
+    ];
+    var html = rows.map(function(r){
+      var vals = PARTS.map(function(p){
+        var a = by[p].map(function(e){ return getv(e, r[1]); }).filter(function(x){ return x != null; });
+        return avg(a);
+      });
+      var present = vals.filter(function(x){ return x != null; });
+      var top = null;
+      if (present.length > 1){
+        var hi = Math.max.apply(null, present), lo = Math.min.apply(null, present);
+        if (hi - lo > 1e-9) top = hi;
+      }
+      return '<tr><th scope="row">' + r[0] + '</th>' + vals.map(function(v){
+        return '<td' + (top != null && v === top ? ' class="max"' : '') + '>' + (v == null ? '—' : fmt(v, r[2])) + '</td>';
+      }).join('') + '</tr>';
+    }).join('');
+    var dirs = PARTS.map(function(p){
+      var cnt = {}, best = null;
+      by[p].forEach(function(e){ if (e.wl){ cnt[e.wl] = (cnt[e.wl] || 0) + 1; if (best == null || cnt[e.wl] > cnt[best]) best = e.wl; } });
+      return best;
+    });
+    html += '<tr><th scope="row">Направление ветра (чаще всего)</th>' + dirs.map(function(d){ return '<td>' + (d || '—') + '</td>'; }).join('') + '</tr>';
+    $('#cmp-tbody').innerHTML = html;
+  }
+  function renderAll(){ renderControls(); renderTable(); renderChart(); renderStats(); renderCompare(); renderLatest(); }
+
+  $('#tbody').addEventListener('click', async function(ev){
+    var gb = ev.target.closest('button[data-grp]');
+    if (gb){
+      var gid = gb.getAttribute('data-grp');
+      state.collapsed[gid] = !state.collapsed[gid];
+      renderTable();
+      return;
+    }
+    var b = ev.target.closest('button[data-act]');
+    if (!b) return;
+    var date = b.closest('tr').getAttribute('data-date');
+    var part = b.closest('tr').getAttribute('data-part');
+    var key = date + '|' + part;
+    if (b.getAttribute('data-act') === 'edit'){
+      $('#f-date').value = date;
+      formPart = part; renderParts();
+      syncDate();
+      $('#form').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      $('#f-t').focus({ preventScroll: true });
+      return;
+    }
+    if (pend === key){
+      clearTimeout(pendTimer); pend = null;
+      var target = state.entries.filter(function(e){ return e.date === date && e.part === part; })[0];
+      if (target && target.id){
+        var dr = await sb.from(TABLE).delete().eq('id', target.id);
+        if (dr.error){ say('Не удалось удалить: ' + errText(dr.error)); renderTable(); return; }
+      }
+      state.entries = state.entries.filter(function(e){ return !(e.date === date && e.part === part); });
+      renderAll(); syncDate();
+      say('Запись за ' + dmy(date) + ', ' + PART_NAME[part].toLowerCase() + ' удалена.');
+    } else {
+      pend = key;
+      clearTimeout(pendTimer);
+      pendTimer = setTimeout(function(){ pend = null; renderTable(); }, 3500);
+      renderTable();
+    }
+  });
+
+  var clearPend = false, clearTimer = null;
+  $('#clear').addEventListener('click', async function(){
+    var b = $('#clear');
+    if (clearPend){
+      clearTimeout(clearTimer); clearPend = false;
+      b.textContent = 'Очистить все записи';
+      b.classList.remove('danger');
+      var cr = await sb.from(TABLE).delete().gte('date', '1900-01-01');
+      if (cr.error){ say('Не удалось очистить: ' + errText(cr.error)); return; }
+      state.entries = []; prefilled = false;
+      renderAll(); syncDate();
+      say('Все записи удалены.');
+    } else {
+      clearPend = true;
+      b.textContent = 'Точно удалить всё?';
+      b.classList.add('danger');
+      clearTimer = setTimeout(function(){ clearPend = false; b.textContent = 'Очистить все записи'; b.classList.remove('danger'); }, 3500);
+    }
+  });
+
+  function bindSeg(sel, attr, key){
+    $(sel).addEventListener('click', function(ev){
+      var b = ev.target.closest('button[' + attr + ']');
+      if (!b) return;
+      state[key] = b.getAttribute(attr);
+      renderControls();
+      renderTable();
+    });
+  }
+  bindSeg('#grp-seg', 'data-g', 'group');
+  bindSeg('#tf-seg', 'data-tf', 'tf');
+  bindSeg('#sort-seg', 'data-s', 'sort');
+
+  /* xfer:start */
+  $('#xfer-btn').addEventListener('click', function(){ var b = $('#xfer-box'); b.hidden = !b.hidden; });
+  $('#xfer-show').addEventListener('click', function(){
+    var ta = $('#xfer-text');
+    var rows = sorted().map(function(e){
+      return { date: e.date, part: e.part, t: e.t, f: e.f, uv: e.uv, p: e.p, h: e.h, pr: e.pr, v: e.v, w: e.w, g: e.g, wd: e.wd, wl: e.wl };
+    });
+    ta.value = JSON.stringify({ app: 'weather-tracker', version: 2, entries: rows }, null, 1);
+    ta.focus(); ta.select();
+  });
+  function inRange(v, lo, hi){ return v == null || (v >= lo && v <= hi); }
+  function importRow(e){
+    if (!e || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || typeof e.t !== 'number' || !isFinite(e.t)) return null;
+    var wd = wdLoad(e.wd);
+    var r = { date: e.date, part: PARTS.indexOf(e.part) >= 0 ? e.part : 'day', t: e.t, f: numOrNull(e.f), uv: numOrNull(e.uv),
+      p: numOrNull(e.p), h: numOrNull(e.h), pr: numOrNull(e.pr), v: numOrNull(e.v), w: numOrNull(e.w), g: numOrNull(e.g), wd: wd,
+      wl: DIRS.indexOf(e.wl) >= 0 ? e.wl : (wd != null ? compass(wd) : null) };
+    var ok = inRange(r.t, -90, 70) && inRange(r.f, -100, 80) && inRange(r.uv, 0, 20) && inRange(r.p, 0, 1e5) &&
+      inRange(r.h, 0, 100) && inRange(r.pr, 300, 1200) && inRange(r.v, 0, 1000) && inRange(r.w, 0, 1000) &&
+      inRange(r.g, 0, 1000) && inRange(r.wd, 0, 360) && !(r.w != null && r.g != null && r.g < r.w);
+    return ok ? r : null;
+  }
+  $('#xfer-load').addEventListener('click', async function(){
+    var raw = $('#xfer-text').value.trim();
+    if (!raw){ say('Вставьте данные в поле выше.'); return; }
+    var d;
+    try{ d = JSON.parse(raw); }catch(err){ say('Не удалось прочитать текст: это не похоже на данные для переноса.'); return; }
+    var list = Array.isArray(d) ? d : (d && Array.isArray(d.entries) ? d.entries : null);
+    if (!list){ say('В тексте нет списка записей.'); return; }
+    var map = {}, skipped = 0;
+    list.forEach(function(e){
+      var r = importRow(e);
+      if (!r){ skipped++; return; }
+      r.user_id = session.user.id;
+      map[r.date + '|' + r.part] = r;
+    });
+    var rows = Object.keys(map).map(function(k){ return map[k]; });
+    if (!rows.length){ say('Подходящих записей не нашлось' + (skipped ? ' (пропущено: ' + skipped + ')' : '') + '.'); return; }
+    var btn = $('#xfer-load');
+    btn.disabled = true;
+    try{
+      for (var i = 0; i < rows.length; i += 200){
+        var res = await sb.from(TABLE).upsert(rows.slice(i, i + 200), { onConflict: 'user_id,date,part' });
+        if (res.error) throw res.error;
+      }
+      await fetchAll();
+    }catch(err){
+      btn.disabled = false;
+      say('Не удалось загрузить: ' + errText(err));
+      return;
+    }
+    btn.disabled = false;
+    renderAll(); syncDate();
+    say('Загружено записей: ' + rows.length + (skipped ? ', пропущено: ' + skipped : '') + '.');
+  });
+  /* xfer:end */
+
+  /* ---------- auth ---------- */
+  function showScreen(name){
+    $('#auth').hidden = name !== 'auth';
+    $('#cfgerr').hidden = name !== 'cfgerr';
+    $('#app').hidden = name !== 'app';
+    $('#userbox').hidden = name !== 'app';
+  }
+  function authSay(msg){ $('#a-status').textContent = msg; }
+  async function startApp(){
+    $('#user-email').textContent = session && session.user && session.user.email ? session.user.email : '';
+    showScreen('app');
+    renderAll();
+    try{
+      await fetchAll();
+    }catch(err){
+      say('Не удалось загрузить записи: ' + errText(err));
+    }
+    renderAll();
+    syncDate();
+  }
+  function initAuth(){
+    var url = CFG.SUPABASE_URL, key = CFG.SUPABASE_ANON_KEY;
+    if (!url || !key || !window.supabase || /ВАШ|YOUR/i.test(url + key)){ showScreen('cfgerr'); return; }
+    sb = window.supabase.createClient(url, key);
+    sb.auth.onAuthStateChange(function(event, sess){
+      session = sess;
+      if (sess){
+        if (!started){ started = true; setTimeout(startApp, 0); }
+      } else {
+        started = false;
+        state.entries = [];
+        showScreen('auth');
+      }
+    });
+    $('#auth-form').addEventListener('submit', async function(ev){
+      ev.preventDefault();
+      var email = $('#a-email').value.trim(), pass = $('#a-pass').value;
+      if (!email || !pass){ authSay('Введите почту и пароль.'); return; }
+      authSay('Входим…');
+      var res = await sb.auth.signInWithPassword({ email: email, password: pass });
+      if (res.error) authSay('Не удалось войти: ' + errText(res.error));
+      else authSay('');
+    });
+    $('#a-signup').addEventListener('click', async function(){
+      var email = $('#a-email').value.trim(), pass = $('#a-pass').value;
+      if (!email || pass.length < 6){ authSay('Введите почту и пароль не короче 6 символов.'); return; }
+      authSay('Создаём аккаунт…');
+      var res = await sb.auth.signUp({ email: email, password: pass });
+      if (res.error){ authSay('Не удалось создать аккаунт: ' + errText(res.error)); return; }
+      authSay(res.data && res.data.session ? '' : 'Проверьте почту: мы отправили письмо для подтверждения. После подтверждения войдите.');
+    });
+    $('#logout').addEventListener('click', function(){ sb.auth.signOut(); });
+  }
+
+  /* ---------- init ---------- */
+  loadPrefs();
+  $('#f-date').value = today();
+  setPressureAttrs();
+  $('#f-unit').value = state.unit;
+  renderParts();
+  renderAll();
+  syncDate();
+  initAuth();
+})();
+</script>
+</body>
+</html>
